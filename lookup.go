@@ -126,18 +126,63 @@ func (t *Iterator) next() (key string, segment *api.Segment, err error) {
 	return key, segment, nil
 }
 
+type matcher struct {
+	field     *api.LookupField
+	refKeyMap map[string]string // The reference key map
+	refKeySet []string          // The reference key set
+	keyMap    map[string]string
+	keySet    []string
+}
+
+func newMatcher() *matcher {
+	return &matcher{}
+}
+
+func (m *matcher) setField(field *api.LookupField) {
+	// Any existing key maps become reference
+	m.refKeyMap = m.keyMap
+	m.refKeySet = m.keySet
+	m.field = field
+	m.keyMap = make(map[string]string)
+	m.keySet = make([]string, 0)
+}
+
+func (m *matcher) match(key, _ string) bool {
+	keyObject := keyFromString(key)
+	k, exists := keyObject.SegmentKey()
+	if !exists {
+		return false
+	}
+
+	// Check if the key was matched on the previous field, if so add to the new map
+	// OR refKeySet length is 0 which means we are on the first field
+	if _, ok := m.refKeyMap[k]; ok || len(m.refKeySet) == 0 {
+		m.keyMap[k] = m.field.Name
+		m.keySet = append(m.keySet, k)
+	}
+
+	return true
+}
+
+func (m *matcher) getMatchCount() int {
+	return len(m.keySet)
+}
+
+func (m *matcher) getMatches() []string {
+	return m.keySet
+}
+
 func (t *Iterator) lookup() error {
 	if t.err != nil {
 		return t.err
 	}
 
-	// keyMap keeps an intersection of matching primary keys across fields
-	keyMap := make(map[string]string)
-	keySet := make([]string, 0)
+	// Start a matcher to hold the results of the index matches
+	m := newMatcher()
 
 	err := t.l.db.engine.View(func(tx *buntdb.Tx) error {
 		// Find the integer index of the index
-		// TODO can we store this in DB?
+		// TODO can we store this in DB struct?
 		idx, err := tx.Get(idxKey(idxById, t.idx), true)
 		if err != nil {
 			return ErrInternalDBError
@@ -145,39 +190,20 @@ func (t *Iterator) lookup() error {
 
 		// For each of the lookup fields, scan the indexes
 		for _, field := range t.l.lookup.Fields {
-			newKeyMap := make(map[string]string)
-			newKeySet := make([]string, 0)
+			m.setField(field)
 
 			err = stringsFromLookupField(field, func(_, value string) bool {
-				err = tx.AscendEqual(idxKey(idx, field.Name), value, func(key, _ string) bool {
-					keyObject := keyFromString(key)
-					k, exists := keyObject.SegmentKey()
-					if !exists {
-						return false
-					}
-
-					// Check if the key was matched on the previous column, if so add to the new map
-					// OR keySet length is 0 which means we are on the first field
-					if _, ok := keyMap[k]; ok || len(keySet) == 0 {
-						newKeyMap[k] = field.Name
-						newKeySet = append(newKeySet, k)
-					}
-
-					return true
-				})
-
-				return err == nil
+				if isGeoLookupField(field) {
+					return tx.Intersects(idxKey(idx, field.Name), value, m.match) == nil
+				}
+				return tx.AscendEqual(idxKey(idx, field.Name), value, m.match) == nil
 			})
 
 			if err != nil {
 				return ErrLookupFailure
 			}
 
-			// Overwrite match keys, maintaining an intersection
-			keyMap = newKeyMap
-			keySet = newKeySet
-
-			if len(keySet) == 0 {
+			if m.getMatchCount() == 0 {
 				return ErrLookupEmpty
 			}
 		}
@@ -190,8 +216,24 @@ func (t *Iterator) lookup() error {
 	}
 
 	// Work out our matches across all keys
-	t.keys = keySet
+	t.keys = m.getMatches()
 	return nil
+}
+
+func isGeoLookupField(field *api.LookupField) bool {
+	switch field.Value.(type) {
+	case *api.LookupField_RangeIntValue,
+		*api.LookupField_RangeFloatValue,
+		*api.LookupField_GeoPointValue,
+		*api.LookupField_GeoRectValue,
+		*api.LookupField_RepeatedRangeIntValue,
+		*api.LookupField_RepeatedRangeFloatValue,
+		*api.LookupField_RepeatedGeoPointValue,
+		*api.LookupField_RepeatedGeoRectValue:
+		return true
+	}
+
+	return false
 }
 
 func stringsFromLookupField(field *api.LookupField, iter func(key, value string) bool) error {
@@ -247,8 +289,9 @@ func stringsFromLookupField(field *api.LookupField, iter func(key, value string)
 		}
 
 	case *api.LookupField_RangeIntValue:
-		_ = iter("0", "["+strconv.FormatInt(field.GetRangeIntValue().Min, 10)+" "+
-			strconv.FormatInt(field.GetRangeIntValue().Max, 10)+"]")
+		// We must use infinity to disable one dimension
+		_ = iter("0", "[-inf "+strconv.FormatInt(field.GetRangeIntValue().Min, 10)+"], "+
+			"[+inf "+strconv.FormatInt(field.GetRangeIntValue().Max, 10)+"]")
 
 	case *api.LookupField_RepeatedRangeIntValue:
 		for key, value := range field.GetRepeatedRangeIntValue().Value {

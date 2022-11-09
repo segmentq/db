@@ -157,8 +157,9 @@ func stringsFromSegmentField(field *api.SegmentField, iter func(key, value strin
 		}
 
 	case *api.SegmentField_RangeIntValue:
-		_ = iter("0", "["+strconv.FormatInt(field.GetRangeIntValue().Min, 10)+" "+
-			strconv.FormatInt(field.GetRangeIntValue().Max, 10)+"]")
+		// We must use infinity to disable one dimension
+		_ = iter("0", "[-inf "+strconv.FormatInt(field.GetRangeIntValue().Min, 10)+"], "+
+			"[+inf "+strconv.FormatInt(field.GetRangeIntValue().Max, 10)+"]")
 
 	case *api.SegmentField_RepeatedRangeIntValue:
 		for key, value := range field.GetRepeatedRangeIntValue().Value {
