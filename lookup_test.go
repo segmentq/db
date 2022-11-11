@@ -10,41 +10,6 @@ import (
 	"time"
 )
 
-func TestDB_GetIndexByName(t *testing.T) {
-	d, _ := NewDB(context.Background())
-
-	indexName := "hello"
-	indexDefinition := &api.IndexDefinition{
-		Name: indexName,
-		Fields: []*api.FieldDefinition{
-			{
-				Name:      "name",
-				DataType:  &api.FieldDefinition_Scalar{Scalar: api.ScalarType_DATA_TYPE_STRING},
-				IsPrimary: true,
-			},
-			{
-				Name:     "age",
-				DataType: &api.FieldDefinition_Geo{Geo: api.GeoType_DATA_TYPE_RANGE},
-			},
-		},
-	}
-
-	var start time.Time
-	start = time.Now()
-
-	// Create an index called "hello" with "name" and "age" fields
-	createdIndex, _ := d.CreateIndex(indexDefinition)
-
-	fmt.Printf("CreateIndex: %s\n", time.Since(start))
-	start = time.Now()
-
-	returnedIndex, _ := d.GetIndexByName(indexName)
-
-	fmt.Printf("GetIndexByName: %s\n", time.Since(start))
-
-	assert.Equal(t, createdIndex, returnedIndex)
-}
-
 func TestDB_Lookup(t *testing.T) {
 	d, _ := NewDB(context.Background())
 

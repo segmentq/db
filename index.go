@@ -54,6 +54,31 @@ func (db *DB) CreateIndex(indexDefinition *api.IndexDefinition) (*Index, error) 
 	return index, index.Create()
 }
 
+// TruncateIndex is a convenience method to call the Truncate method of an Index, which removes all segments
+func (db *DB) TruncateIndex(name string) error {
+	definition, ok := db.idx[name]
+	if !ok {
+		return ErrIndexUnknown
+	}
+
+	index := &Index{
+		db:         db,
+		definition: definition,
+	}
+	return index.Truncate()
+}
+
+// DeleteIndex deletes all segments and the index itself
+func (db *DB) DeleteIndex(name string) (*Index, error) {
+	index, err := db.GetIndexByName(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return index, index.Delete()
+}
+
+// GetIndexByName returns the index with the specified name
 func (db *DB) GetIndexByName(name string) (*Index, error) {
 	definition, ok := db.idx[name]
 	if !ok {
@@ -64,6 +89,17 @@ func (db *DB) GetIndexByName(name string) (*Index, error) {
 		db:         db,
 		definition: definition,
 	}, nil
+}
+
+// ListIndexes returns an unbuffered list of all indexes TODO maybe some limit to this?
+func (db *DB) ListIndexes() []*api.IndexDefinition {
+	list := make([]*api.IndexDefinition, 0, len(db.idx))
+
+	for _, index := range db.idx {
+		list = append(list, index)
+	}
+
+	return list
 }
 
 func newIndex(db *DB, definition *api.IndexDefinition) *Index {
@@ -85,7 +121,7 @@ func (i *Index) Create() error {
 		}
 
 		if dbSize > 0 {
-			err = tx.Descend(idxByStringPattern, func(key, value string) bool {
+			err = tx.Descend(idxById, func(key, value string) bool {
 				id, _ = strconv.Atoi(value)
 				return false
 			})
@@ -97,6 +133,10 @@ func (i *Index) Create() error {
 		// Increment to get the next id
 		id++
 		idStr = strconv.Itoa(id)
+
+		if err = i.createIndexes(tx, idStr); err != nil {
+			return err
+		}
 
 		return i.storeIndexes(tx, idStr)
 	})
@@ -110,6 +150,120 @@ func (i *Index) Create() error {
 
 	// Configure the field indexes
 	return i.db.createIndexFields(idStr, i.definition.Fields)
+}
+
+// Delete first uses Truncate to clear segment then deletes the index
+func (i *Index) Delete() error {
+	if err := i.Truncate(); err != nil {
+		return err
+	}
+
+	err := i.db.engine.Update(func(tx *buntdb.Tx) error {
+		// Find the integer index of the index
+		idx, err := tx.Get(idxKey(idxById, i.definition.Name), true)
+		if err != nil {
+			return ErrInternalDBError
+		}
+
+		deleteKeys := []string{
+			idxKey(idxById, i.definition.Name),
+			idxKey(fieldDefByIdx, i.definition.Name),
+			idxKey(idxByString, idx),
+		}
+		dropIndexes := []string{
+			idx,
+			idxKey(segmentByPrimaryKey, idx),
+		}
+
+		for _, field := range i.definition.Fields {
+			dropIndexes = append(dropIndexes, idxKey(idx, field.Name))
+		}
+
+		for _, index := range dropIndexes {
+			if err = tx.DropIndex(index); err != nil {
+				return ErrInternalDBError
+			}
+		}
+
+		for _, key := range deleteKeys {
+			if _, err = tx.Delete(key); err != nil {
+				return ErrInternalDBError
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// Also delete from memory
+	delete(i.db.idx, i.definition.Name)
+	delete(i.db.fields, i.definition.Name)
+
+	return nil
+}
+
+// Truncate deletes all segments from the index
+func (i *Index) Truncate() error {
+	err := i.db.engine.Update(func(tx *buntdb.Tx) error {
+		// Find the integer index of the index
+		idx, err := tx.Get(idxKey(idxById, i.definition.Name), true)
+		if err != nil {
+			return ErrInternalDBError
+		}
+
+		keysToDelete := make([]string, 0)
+
+		err = tx.Ascend(idx, func(key, value string) bool {
+			keysToDelete = append(keysToDelete, key)
+			return true
+		})
+
+		if err != nil {
+			return ErrInternalDBError
+		}
+
+		err = tx.Ascend(idxKey(segmentByPrimaryKey, idx), func(key, value string) bool {
+			keysToDelete = append(keysToDelete, key)
+			return true
+		})
+
+		if err != nil {
+			return ErrInternalDBError
+		}
+
+		for _, k := range keysToDelete {
+			if _, err = tx.Delete(k); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return ErrInternalDBError
+	}
+
+	return nil
+}
+
+// createIndexes ensures the segment indexes are created
+func (i *Index) createIndexes(tx *buntdb.Tx, idStr string) error {
+	// Create an Index patterns to use later for truncating and deleting segments
+	err := tx.CreateIndex(idStr, idxKey(idStr, wildcard), buntdb.IndexString)
+	if err != nil {
+		return ErrInternalDBError
+	}
+	err = tx.CreateIndex(idxKey(segmentByPrimaryKey, idStr), idxKey(segmentByPrimaryKey, idStr, wildcard),
+		buntdb.IndexString)
+	if err != nil {
+		return ErrInternalDBError
+	}
+
+	return nil
 }
 
 // storeIndexes is used to set internal indexes for the index
