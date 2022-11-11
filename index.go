@@ -165,42 +165,51 @@ func (i *Index) Delete() error {
 			return ErrInternalDBError
 		}
 
-		deleteKeys := []string{
-			idxKey(idxById, i.definition.Name),
-			idxKey(fieldDefByIdx, i.definition.Name),
-			idxKey(idxByString, idx),
-		}
-		dropIndexes := []string{
-			idx,
-			idxKey(segmentByPrimaryKey, idx),
+		if err = i.deleteKeys(idx, tx); err != nil {
+			return err
 		}
 
-		for _, field := range i.definition.Fields {
-			dropIndexes = append(dropIndexes, idxKey(idx, field.Name))
-		}
-
-		for _, index := range dropIndexes {
-			if err = tx.DropIndex(index); err != nil {
-				return ErrInternalDBError
-			}
-		}
-
-		for _, key := range deleteKeys {
-			if _, err = tx.Delete(key); err != nil {
-				return ErrInternalDBError
-			}
-		}
-
-		return nil
+		return i.dropIndexes(idx, tx)
 	})
 
 	if err != nil {
 		return err
 	}
 
-	// Also delete from memory
-	delete(i.db.idx, i.definition.Name)
-	delete(i.db.fields, i.definition.Name)
+	return nil
+}
+
+func (i *Index) deleteKeys(idx string, tx *buntdb.Tx) error {
+	keys := []string{
+		idxKey(idxById, i.definition.Name),
+		idxKey(fieldDefByIdx, i.definition.Name),
+		idxKey(idxByString, idx),
+	}
+
+	for _, key := range keys {
+		if _, err := tx.Delete(key); err != nil {
+			return ErrInternalDBError
+		}
+	}
+
+	return nil
+}
+
+func (i *Index) dropIndexes(idx string, tx *buntdb.Tx) error {
+	indexes := []string{
+		idx,
+		idxKey(segmentByPrimaryKey, idx),
+	}
+
+	for _, field := range i.definition.Fields {
+		indexes = append(indexes, idxKey(idx, field.Name))
+	}
+
+	for _, index := range indexes {
+		if err := tx.DropIndex(index); err != nil {
+			return ErrInternalDBError
+		}
+	}
 
 	return nil
 }
