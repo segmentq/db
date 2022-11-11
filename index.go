@@ -54,6 +54,18 @@ func (db *DB) CreateIndex(indexDefinition *api.IndexDefinition) (*Index, error) 
 	return index, index.Create()
 }
 
+func (db *DB) GetIndexByName(name string) (*Index, error) {
+	definition, ok := db.idx[name]
+	if !ok {
+		return nil, ErrIndexUnknown
+	}
+
+	return &Index{
+		db:         db,
+		definition: definition,
+	}, nil
+}
+
 func newIndex(db *DB, definition *api.IndexDefinition) *Index {
 	return &Index{
 		db:         db,
