@@ -5,7 +5,6 @@ import (
 	api "github.com/segmentq/protos-api-go"
 	"github.com/tidwall/buntdb"
 	"google.golang.org/api/iterator"
-	"strconv"
 )
 
 type Lookup struct {
@@ -192,14 +191,14 @@ func (t *Iterator) lookup() error {
 		for _, field := range t.l.lookup.Fields {
 			m.setField(field)
 
-			err = stringsFromLookupField(field, func(_, value string) bool {
+			s := NewLookupStringer(field, func(_, value string) bool {
 				if isGeoLookupField(field) {
 					return tx.Intersects(idxKey(idx, field.Name), value, m.match) == nil
 				}
 				return tx.AscendEqual(idxKey(idx, field.Name), value, m.match) == nil
 			})
 
-			if err != nil {
+			if err = s.Marshall(); err != nil {
 				return ErrLookupFailure
 			}
 
@@ -234,122 +233,4 @@ func isGeoLookupField(field *api.LookupField) bool {
 	}
 
 	return false
-}
-
-func stringsFromLookupField(field *api.LookupField, iter func(key, value string) bool) error {
-	switch field.Value.(type) {
-	case *api.LookupField_StringValue:
-		_ = iter("0", field.GetStringValue().Value)
-
-	case *api.LookupField_RepeatedStringValue:
-		for key, value := range field.GetRepeatedStringValue().Value {
-			if ok := iter(strconv.Itoa(key), value); !ok {
-				break
-			}
-		}
-
-	case *api.LookupField_IntValue:
-		_ = iter("0", strconv.FormatInt(field.GetIntValue().Value, 10))
-
-	case *api.LookupField_RepeatedIntValue:
-		for key, value := range field.GetRepeatedIntValue().Value {
-			if ok := iter(strconv.Itoa(key), strconv.FormatInt(value, 10)); !ok {
-				break
-			}
-		}
-
-	case *api.LookupField_UintValue:
-		_ = iter("0", strconv.FormatUint(field.GetUintValue().Value, 10))
-
-	case *api.LookupField_RepeatedUintValue:
-		for key, value := range field.GetRepeatedUintValue().Value {
-			if ok := iter(strconv.Itoa(key), strconv.FormatUint(value, 10)); !ok {
-				break
-			}
-		}
-
-	case *api.LookupField_FloatValue:
-		_ = iter("0", strconv.FormatFloat(field.GetFloatValue().Value, 'E', -1, 64))
-
-	case *api.LookupField_RepeatedFloatValue:
-		for key, value := range field.GetRepeatedFloatValue().Value {
-			if ok := iter(strconv.Itoa(key), strconv.FormatFloat(value, 'E', -1, 64)); !ok {
-				break
-			}
-		}
-
-	case *api.LookupField_BoolValue:
-		_ = iter("0", strconv.FormatBool(field.GetBoolValue().Value))
-
-	case *api.LookupField_RepeatedBoolValue:
-		for key, value := range field.GetRepeatedBoolValue().Value {
-			if ok := iter(strconv.Itoa(key), strconv.FormatBool(value)); !ok {
-				break
-			}
-		}
-
-	case *api.LookupField_RangeIntValue:
-		// We must use infinity to disable one dimension
-		_ = iter("0", "[-inf "+strconv.FormatInt(field.GetRangeIntValue().Min, 10)+"], "+
-			"[+inf "+strconv.FormatInt(field.GetRangeIntValue().Max, 10)+"]")
-
-	case *api.LookupField_RepeatedRangeIntValue:
-		for key, value := range field.GetRepeatedRangeIntValue().Value {
-			if ok := iter(strconv.Itoa(key), "["+strconv.FormatInt(value.Min, 10)+" "+
-				strconv.FormatInt(value.Max, 10)+"]"); !ok {
-				break
-			}
-		}
-
-	case *api.LookupField_RangeFloatValue:
-		_ = iter("0", "["+strconv.FormatFloat(field.GetRangeFloatValue().Min, 'E', -1, 64)+" "+
-			strconv.FormatFloat(field.GetRangeFloatValue().Max, 'E', -1, 64)+"]")
-
-	case *api.LookupField_RepeatedRangeFloatValue:
-		for key, value := range field.GetRepeatedRangeFloatValue().Value {
-			if ok := iter(strconv.Itoa(key), "["+strconv.FormatFloat(value.Min, 'E', -1, 64)+" "+
-				strconv.FormatFloat(value.Max, 'E', -1, 64)+"]"); !ok {
-				break
-			}
-		}
-
-	case *api.LookupField_GeoPointValue:
-		_ = iter("0", "["+strconv.FormatFloat(field.GetGeoPointValue().X, 'E', -1, 64)+" "+
-			strconv.FormatFloat(field.GetGeoPointValue().Y, 'E', -1, 64)+"]")
-
-	case *api.LookupField_RepeatedGeoPointValue:
-		for key, value := range field.GetRepeatedGeoPointValue().Value {
-			if ok := iter(strconv.Itoa(key), "["+strconv.FormatFloat(value.X, 'E', -1, 64)+" "+
-				strconv.FormatFloat(value.Y, 'E', -1, 64)+"]"); !ok {
-				break
-			}
-		}
-
-	case *api.LookupField_GeoRectValue:
-		tl := field.GetGeoRectValue().GetTopLeft()
-		br := field.GetGeoRectValue().GetBottomRight()
-
-		_ = iter("0", "["+strconv.FormatFloat(tl.X, 'E', -1, 64)+" "+
-			strconv.FormatFloat(tl.Y, 'E', -1, 64)+"],["+
-			strconv.FormatFloat(br.X, 'E', -1, 64)+" "+
-			strconv.FormatFloat(br.Y, 'E', -1, 64)+"]")
-
-	case *api.LookupField_RepeatedGeoRectValue:
-		for key, value := range field.GetRepeatedGeoRectValue().Value {
-			tl := value.GetTopLeft()
-			br := value.GetBottomRight()
-
-			if ok := iter(strconv.Itoa(key), "["+strconv.FormatFloat(tl.X, 'E', -1, 64)+" "+
-				strconv.FormatFloat(tl.Y, 'E', -1, 64)+"],["+
-				strconv.FormatFloat(br.X, 'E', -1, 64)+" "+
-				strconv.FormatFloat(br.Y, 'E', -1, 64)+"]"); !ok {
-				break
-			}
-		}
-
-	default:
-		return ErrFieldUnknown
-	}
-
-	return nil
 }
