@@ -86,29 +86,7 @@ func (i *Index) Create() error {
 		id++
 		idStr = strconv.Itoa(id)
 
-		// Store the index name by id
-		_, replaced, err := tx.Set(idxKey(idxByString, idStr), i.definition.Name, nil)
-		if err != nil {
-			return ErrInternalDBError
-		}
-		if replaced {
-			return ErrIndexExists
-		}
-
-		// Store the index id by name
-		_, _, err = tx.Set(idxKey(idxById, i.definition.Name), idStr, nil)
-		if err != nil {
-			return ErrInternalDBError
-		}
-
-		// Store the definitions for cold starts
-		_, _, err = tx.Set(idxKey(fieldDefByIdx, i.definition.Name), proto.MarshalTextString(i.definition),
-			nil)
-		if err != nil {
-			return ErrInternalDBError
-		}
-
-		return nil
+		return i.storeIndexes(tx, idStr)
 	})
 
 	if err != nil {
@@ -116,10 +94,37 @@ func (i *Index) Create() error {
 	}
 
 	// Store in memory
-	i.db.loadIndexFields(i.definition.Name, i.definition)
+	i.db.loadIndexFields(i.definition)
 
 	// Configure the field indexes
 	return i.db.createIndexFields(idStr, i.definition.Fields)
+}
+
+// storeIndexes is used to set internal indexes for the index
+func (i *Index) storeIndexes(tx *buntdb.Tx, idStr string) error {
+	// Store the index name by id
+	_, replaced, err := tx.Set(idxKey(idxByString, idStr), i.definition.Name, nil)
+	if err != nil {
+		return ErrInternalDBError
+	}
+	if replaced {
+		return ErrIndexExists
+	}
+
+	// Store the index id by name
+	_, _, err = tx.Set(idxKey(idxById, i.definition.Name), idStr, nil)
+	if err != nil {
+		return ErrInternalDBError
+	}
+
+	// Store the definitions for cold starts
+	_, _, err = tx.Set(idxKey(fieldDefByIdx, i.definition.Name), proto.MarshalTextString(i.definition),
+		nil)
+	if err != nil {
+		return ErrInternalDBError
+	}
+
+	return nil
 }
 
 // loadIndexes is used to load all known indexes into memory, usually when starting the engine
@@ -132,7 +137,7 @@ func (db *DB) loadIndexes() error {
 				return false
 			}
 
-			db.loadIndexFields(name, indexProto)
+			db.loadIndexFields(indexProto)
 			return true
 		})
 	})
@@ -143,15 +148,15 @@ func (db *DB) loadIndexes() error {
 }
 
 // loadIndexFields is used to load all known fields into memory, usually when starting the engine
-func (db *DB) loadIndexFields(name string, index *api.IndexDefinition) {
-	db.idx[name] = index
+func (db *DB) loadIndexFields(index *api.IndexDefinition) {
+	db.idx[index.Name] = index
 	fields := make(map[string]*api.FieldDefinition, 0)
 
 	for _, field := range index.Fields {
 		fields[field.Name] = field
 	}
 
-	db.fields[name] = fields
+	db.fields[index.Name] = fields
 }
 
 // createIndexFields registers all field indexes in the engine
