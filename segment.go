@@ -44,35 +44,9 @@ func (s *Segment) InsertToIndexName(indexName string) error {
 			return ErrInternalDBError
 		}
 
-		var primary string
-		inserts := make(map[string]map[string]string, 0) // map of values by key prefix
-
-		// Gather the values by segmentField name and key in a 0 based map
-		for _, field := range s.segment.Fields {
-			definition, exists := s.db.fields[indexName][field.Name]
-			if !exists {
-				if _, ok := s.db.fields[indexName]; !ok {
-					return ErrIndexUnknown
-				}
-				return ErrFieldUnknown
-			}
-
-			// Note the primary key, so we can extract the correct value for the key name
-			if definition.IsPrimary {
-				primary = field.Name
-			}
-
-			keyMap := make(map[string]string, 0)
-			stringer := NewSegmentStringer(field, func(key string, value string) bool {
-				keyMap[key] = value
-				return true
-			})
-
-			if err = stringer.Marshall(); err != nil {
-				return ErrInternalDBError
-			}
-
-			inserts[field.Name] = keyMap
+		primary, inserts, err := s.generateInsertMap(indexName)
+		if err != nil {
+			return err
 		}
 
 		// Make an insert into each index
@@ -95,6 +69,40 @@ func (s *Segment) InsertToIndexName(indexName string) error {
 
 		return nil
 	})
+}
+
+func (s *Segment) generateInsertMap(indexName string) (primary string, inserts map[string]map[string]string, err error) {
+	// Gather the values by field name and key in a 0 based map
+	inserts = make(map[string]map[string]string, 0)
+
+	for _, field := range s.segment.Fields {
+		definition, exists := s.db.fields[indexName][field.Name]
+		if !exists {
+			if _, ok := s.db.fields[indexName]; !ok {
+				return "", nil, ErrIndexUnknown
+			}
+			return "", nil, ErrFieldUnknown
+		}
+
+		// Note the primary key, so we can extract the correct value for the key name
+		if definition.IsPrimary {
+			primary = field.Name
+		}
+
+		keyMap := make(map[string]string, 0)
+		stringer := NewSegmentStringer(field, func(key string, value string) bool {
+			keyMap[key] = value
+			return true
+		})
+
+		if err = stringer.Marshall(); err != nil {
+			return "", nil, ErrInternalDBError
+		}
+
+		inserts[field.Name] = keyMap
+	}
+
+	return primary, inserts, nil
 }
 
 type Stringer struct {
