@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	api "github.com/segmentq/protos-api-go"
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/iterator"
 	"testing"
 	"time"
 )
 
-func TestDB_CreateIndex(t *testing.T) {
+func TestDB_Lookup(t *testing.T) {
 	d, _ := NewDB(context.Background())
 
 	var start time.Time
@@ -116,12 +117,9 @@ func TestDB_CreateIndex(t *testing.T) {
 		if err == iterator.Done {
 			break
 		}
-		if err != nil {
-			panic(err)
-		}
-		if key != "Millennial" {
-			panic(fmt.Sprint("received", key))
-		}
+
+		assert.NoError(t, err)
+		assert.Equal(t, "Millennial", key)
 	}
 
 	start = time.Now()
@@ -148,12 +146,9 @@ func TestDB_CreateIndex(t *testing.T) {
 		if err == iterator.Done {
 			break
 		}
-		if err != nil {
-			panic(err)
-		}
-		if key != "OAP" {
-			panic(fmt.Sprint("received", key))
-		}
+
+		assert.NoError(t, err)
+		assert.Equal(t, "OAP", key)
 	}
 
 	// Lookup both
@@ -177,22 +172,13 @@ func TestDB_CreateIndex(t *testing.T) {
 		if err == iterator.Done {
 			break
 		}
-		if err != nil {
-			panic(err)
-		}
+
+		assert.NoError(t, err)
 
 		collector = append(collector, key)
 	}
 
-	if len(collector) != 2 {
-		panic("too many results")
-	}
-
-	if collector[0] != "Millennial" {
-		panic("missing Millennial")
-	}
-
-	if collector[1] != "OAP" {
-		panic("missing OAP")
-	}
+	assert.Equal(t, len(collector), 2)
+	assert.Equal(t, "Millennial", collector[0])
+	assert.Equal(t, "OAP", collector[1])
 }
