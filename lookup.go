@@ -182,32 +182,12 @@ func (t *Iterator) lookup() error {
 	err := t.l.db.engine.View(func(tx *buntdb.Tx) error {
 		// Find the integer index of the index
 		// TODO can we store this in DB struct?
-		idx, err := tx.Get(idxKey(idxById, t.idx), true)
+		indexId, err := tx.Get(idxKey(idxById, t.idx), true)
 		if err != nil {
 			return ErrInternalDBError
 		}
 
-		// For each of the lookup fields, scan the indexes
-		for _, field := range t.l.lookup.Fields {
-			m.setField(field)
-
-			s := NewLookupStringer(field, func(_, value string) bool {
-				if isGeoLookupField(field) {
-					return tx.Intersects(idxKey(idx, field.Name), value, m.match) == nil
-				}
-				return tx.AscendEqual(idxKey(idx, field.Name), value, m.match) == nil
-			})
-
-			if err = s.Marshall(); err != nil {
-				return ErrLookupFailure
-			}
-
-			if m.getMatchCount() == 0 {
-				return ErrLookupEmpty
-			}
-		}
-
-		return nil
+		return t.scanAllFields(indexId, m, tx)
 	})
 
 	if err != nil {
@@ -216,6 +196,31 @@ func (t *Iterator) lookup() error {
 
 	// Work out our matches across all keys
 	t.keys = m.getMatches()
+	return nil
+}
+
+// scanAllFields iterates through each lookup field to hydrate the matcher
+func (t *Iterator) scanAllFields(indexId string, m *matcher, tx *buntdb.Tx) error {
+	// For each of the lookup fields, scan the indexes
+	for _, field := range t.l.lookup.Fields {
+		m.setField(field)
+
+		s := NewLookupStringer(field, func(_, value string) bool {
+			if isGeoLookupField(field) {
+				return tx.Intersects(idxKey(indexId, field.Name), value, m.match) == nil
+			}
+			return tx.AscendEqual(idxKey(indexId, field.Name), value, m.match) == nil
+		})
+
+		if err := s.Marshall(); err != nil {
+			return ErrLookupFailure
+		}
+
+		if m.getMatchCount() == 0 {
+			return ErrLookupEmpty
+		}
+	}
+
 	return nil
 }
 
