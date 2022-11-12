@@ -51,7 +51,10 @@ type Index struct {
 // CreateIndex takes an IndexDefinition and returns an Index
 func (db *DB) CreateIndex(indexDefinition *api.IndexDefinition) (*Index, error) {
 	index := newIndex(db, indexDefinition)
-	return index, index.Create()
+	if err := index.Create(); err != nil {
+		return nil, err
+	}
+	return index, nil
 }
 
 // TruncateIndex is a convenience method to call the Truncate method of an Index, which removes all segments
@@ -109,10 +112,27 @@ func newIndex(db *DB, definition *api.IndexDefinition) *Index {
 	}
 }
 
+func (i *Index) Exists() (bool, error) {
+	if i.definition == nil || i.definition.Name == "" {
+		return false, ErrIndexUnknown
+	}
+
+	_, exists := i.db.idx[i.definition.Name]
+	return exists, nil
+}
+
 // Create is used when the Index is instantiated directly
 func (i *Index) Create() error {
+	exists, err := i.Exists()
+	if err != nil {
+		return err
+	}
+	if exists {
+		return ErrIndexExists
+	}
+
 	var idStr string
-	err := i.db.engine.Update(func(tx *buntdb.Tx) error {
+	err = i.db.engine.Update(func(tx *buntdb.Tx) error {
 		// Determine the last insert id
 		id := 0
 		dbSize, err := tx.Len()
@@ -345,7 +365,12 @@ func (db *DB) createIndexFields(path string, fields []*api.FieldDefinition) erro
 	return nil
 }
 
+// createIndexField prepares the correct indexes for a given field and key path (index)
 func (db *DB) createIndexField(path string, field *api.FieldDefinition) (err error) {
+	if field == nil {
+		return ErrFieldUnknown
+	}
+
 	// Create indexes for each field
 	name := idxKey(path, field.Name)
 
