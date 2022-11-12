@@ -136,7 +136,7 @@ func (k *Key) fromString(str string) {
 }
 
 func (k *Key) IndexId() (string, bool) {
-	if len(k.parts) > 0 {
+	if len(k.parts) >= 4 {
 		return k.parts[0], true
 	}
 	return "", false
@@ -147,8 +147,8 @@ func (k *Key) FieldNameAtIndex(fieldIndex int) (string, bool) {
 	// Account for the index part
 	pos := fieldIndex + 1
 
-	// Don't allow items past the end of the field parts
-	if len(k.parts) >= (pos + 2) {
+	// Don't allow items past the end of the field parts, account for primary and fieldIndex too
+	if len(k.parts) >= (pos + 3) {
 		return k.parts[pos], true
 	}
 	return "", false
@@ -156,7 +156,7 @@ func (k *Key) FieldNameAtIndex(fieldIndex int) (string, bool) {
 
 // SegmentKey finds the value of the segments primary key
 func (k *Key) SegmentKey() (string, bool) {
-	if len(k.parts) > 0 {
+	if len(k.parts) >= 4 {
 		return k.parts[len(k.parts)-2], true
 	}
 	return "", false
@@ -164,7 +164,7 @@ func (k *Key) SegmentKey() (string, bool) {
 
 // FieldValueIndex finds the value index of the segments field value
 func (k *Key) FieldValueIndex() (string, bool) {
-	if len(k.parts) > 0 {
+	if len(k.parts) >= 4 {
 		return k.parts[len(k.parts)-1], true
 	}
 	return "", false
