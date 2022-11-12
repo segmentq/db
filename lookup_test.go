@@ -120,6 +120,7 @@ func TestDB_Lookup(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, "Millennial", key)
+		break
 	}
 
 	start = time.Now()
@@ -149,6 +150,7 @@ func TestDB_Lookup(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, "OAP", key)
+		break
 	}
 
 	// Lookup both
@@ -174,6 +176,10 @@ func TestDB_Lookup(t *testing.T) {
 		}
 
 		assert.NoError(t, err)
+
+		if err != nil {
+			break
+		}
 
 		collector = append(collector, key)
 	}
