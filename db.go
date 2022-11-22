@@ -183,3 +183,58 @@ func keyFromString(key string) Key {
 
 	return k
 }
+
+type TxnAction interface {
+	call(tx *buntdb.Tx) error
+}
+
+type Txn struct {
+	db    *DB
+	safe  bool
+	stack []TxnAction
+}
+
+func NewTxn(db *DB, safe bool) *Txn {
+	return &Txn{
+		db:    db,
+		safe:  safe,
+		stack: make([]TxnAction, 0),
+	}
+}
+
+func (t *Txn) AddAction(action TxnAction) {
+	t.stack = append(t.stack, action)
+}
+
+func (t *Txn) Settle() error {
+	if t.safe {
+		return t.safeSettle()
+	}
+	return t.unsafeSettle()
+}
+
+func (t *Txn) safeSettle() error {
+	return t.db.engine.Update(func(tx *buntdb.Tx) error {
+		for _, action := range t.stack {
+			err := action.call(tx)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+func (t *Txn) unsafeSettle() error {
+	return t.db.engine.View(func(tx *buntdb.Tx) error {
+		for _, action := range t.stack {
+			err := action.call(tx)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
