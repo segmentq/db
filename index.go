@@ -135,17 +135,17 @@ func (i *Index) Create() error {
 	err = i.db.engine.Update(func(tx *buntdb.Tx) error {
 		// Determine the last insert id
 		id := 0
-		dbSize, err := tx.Len()
-		if err != nil {
+		dbSize, err2 := tx.Len()
+		if err2 != nil {
 			return ErrInternalDBError
 		}
 
 		if dbSize > 0 {
-			err = tx.Descend(idxById, func(key, value string) bool {
+			err2 = tx.Descend(idxById, func(key, value string) bool {
 				id, _ = strconv.Atoi(value)
 				return false
 			})
-			if err != nil {
+			if err2 != nil {
 				return ErrInternalDBError
 			}
 		}
@@ -154,8 +154,8 @@ func (i *Index) Create() error {
 		id++
 		idStr = strconv.Itoa(id)
 
-		if err = i.createIndexes(tx, idStr); err != nil {
-			return err
+		if err2 = i.createIndexes(tx, idStr); err2 != nil {
+			return err2
 		}
 
 		return i.storeIndexes(tx, idStr)

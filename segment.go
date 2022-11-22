@@ -15,13 +15,224 @@ type Segment struct {
 }
 
 func (db *DB) InsertSegment(indexName string, segment *api.Segment) (*Segment, error) {
-	s := newSegment(db, nil, segment)
-	return s, s.InsertToIndexName(indexName)
+	index, err := db.GetIndexByName(indexName)
+	if err != nil {
+		return nil, err
+	}
+	s := newSegment(db, index, segment)
+	return s, s.insertToIndexName(indexName)
+}
+
+func (db *DB) NewSegment(indexName string, segment *api.Segment) (*Segment, error) {
+	index, err := db.GetIndexByName(indexName)
+	if err != nil {
+		return nil, err
+	}
+	return newSegment(db, index, segment), nil
+}
+
+func (i *Index) NewSegment(segment *api.Segment) (*Segment, error) {
+	return newSegment(i.db, i, segment), nil
 }
 
 func (i *Index) InsertSegment(segment *api.Segment) (*Segment, error) {
 	s := newSegment(i.db, i, segment)
 	return s, s.Insert()
+}
+
+func (db *DB) GetSegmentByKey(indexName string, segmentKey string) (*Segment, error) {
+	index, err := db.GetIndexByName(indexName)
+	if err != nil {
+		return nil, err
+	}
+
+	return index.GetSegmentByKey(segmentKey)
+}
+
+func (i *Index) GetSegmentByKey(key string) (*Segment, error) {
+	var s string
+	err := i.db.engine.View(func(tx *buntdb.Tx) error {
+		idx, err := tx.Get(idxKey(idxById, i.definition.Name), true)
+		if err != nil {
+			return ErrInternalDBError
+		}
+
+		s, err = tx.Get(idxKey(segmentByPrimaryKey, idx, key))
+		if err != nil {
+			return ErrSegmentNotFound
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	var segment api.Segment
+	err = proto.UnmarshalText(s, &segment)
+
+	if err != nil {
+		return nil, ErrMarshallingFailed
+	}
+
+	return &Segment{
+		db:      i.db,
+		index:   i,
+		segment: &segment,
+	}, nil
+}
+
+func (db *DB) DeleteSegment(indexName string, segmentKey string) (*Segment, error) {
+	index, err := db.GetIndexByName(indexName)
+	if err != nil {
+		return nil, err
+	}
+
+	return index.DeleteSegment(segmentKey)
+}
+
+func (i *Index) DeleteSegment(key string) (*Segment, error) {
+	segment, err := i.GetSegmentByKey(key)
+	if err != nil {
+		return nil, err
+	}
+
+	err = segment.deleteFromIndexName(i.definition.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return segment, nil
+}
+
+func (s *Segment) Delete() error {
+	return s.deleteFromIndexName(s.index.definition.Name)
+}
+
+func (s *Segment) deleteFromIndexName(indexName string) error {
+	primary, deletes, err := s.generateIndexMap(indexName)
+	if err != nil {
+		return err
+	}
+
+	return s.db.engine.Update(func(tx *buntdb.Tx) error {
+		// Find the integer index of the index
+		idx, err1 := tx.Get(idxKey(idxById, indexName), true)
+		if err1 != nil {
+			return ErrInternalDBError
+		}
+
+		// Delete from each index
+		deletePrimaryValue := deletes[primary]["0"]
+		for fieldName, values := range deletes {
+			for key := range values {
+				_, err = tx.Delete(idxKey(idx, fieldName, deletePrimaryValue, key))
+				if err != nil {
+					return ErrInternalDBError
+				}
+			}
+		}
+
+		// Delete the whole object
+		_, err = tx.Delete(idxKey(segmentByPrimaryKey, idx, deletePrimaryValue))
+		if err != nil {
+			return ErrInternalDBError
+		}
+
+		return nil
+	})
+}
+
+// TODO change this to take the Segment as an arg instead of proto
+func (db *DB) ReplaceSegment(indexName string, segmentKey string, newSegment *api.Segment) (*Segment, error) {
+	index, err := db.GetIndexByName(indexName)
+	if err != nil {
+		return nil, err
+	}
+
+	return index.ReplaceSegment(segmentKey, newSegment)
+}
+
+func (i *Index) ReplaceSegment(key string, newSegment *api.Segment) (*Segment, error) {
+	segment, err := i.GetSegmentByKey(key)
+	if err != nil {
+		return nil, err
+	}
+
+	return segment.replaceInIndexName(i.definition.Name, newSegment)
+}
+
+func (s *Segment) Replace(new *api.Segment) (*Segment, error) {
+	return s.replaceInIndexName(s.index.definition.Name, new)
+}
+
+func (s *Segment) replaceInIndexName(indexName string, new *api.Segment) (*Segment, error) {
+	r := &Segment{
+		db:      s.db,
+		index:   s.index,
+		segment: new,
+	}
+
+	primary, deletes, err := s.generateIndexMap(indexName)
+	if err != nil {
+		return nil, err
+	}
+
+	_, inserts, err := r.generateIndexMap(indexName)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.db.engine.Update(func(tx *buntdb.Tx) error {
+		// Find the integer index of the index
+		idx, err1 := tx.Get(idxKey(idxById, indexName), true)
+		if err1 != nil {
+			return ErrInternalDBError
+		}
+
+		// Delete from each index
+		deletePrimaryValue := deletes[primary]["0"]
+		for fieldName, values := range deletes {
+			for key := range values {
+				_, err = tx.Delete(idxKey(idx, fieldName, deletePrimaryValue, key))
+				if err != nil {
+					return ErrInternalDBError
+				}
+			}
+		}
+
+		// Delete the whole object
+		_, err = tx.Delete(idxKey(segmentByPrimaryKey, idx, deletePrimaryValue))
+		if err != nil {
+			return ErrInternalDBError
+		}
+
+		// Make an insert into each index
+		insertPrimaryValue := inserts[primary]["0"]
+		for fieldName, values := range inserts {
+			for key, value := range values {
+				_, _, err = tx.Set(idxKey(idx, fieldName, insertPrimaryValue, key), value, nil)
+				if err != nil {
+					return ErrInternalDBError
+				}
+			}
+		}
+
+		// Index the whole object for returning the whole segment
+		_, _, err = tx.Set(idxKey(segmentByPrimaryKey, idx, insertPrimaryValue), proto.MarshalTextString(s.segment), nil)
+		if err != nil {
+			return ErrInternalDBError
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return r, nil
 }
 
 func newSegment(db *DB, index *Index, segment *api.Segment) *Segment {
@@ -33,10 +244,10 @@ func newSegment(db *DB, index *Index, segment *api.Segment) *Segment {
 }
 
 func (s *Segment) Insert() error {
-	return s.InsertToIndexName(s.index.definition.Name)
+	return s.insertToIndexName(s.index.definition.Name)
 }
 
-func (s *Segment) InsertToIndexName(indexName string) error {
+func (s *Segment) insertToIndexName(indexName string) error {
 	return s.db.engine.Update(func(tx *buntdb.Tx) error {
 		// Find the integer index of the index
 		idx, err := tx.Get(idxKey(idxById, indexName), true)
@@ -44,7 +255,7 @@ func (s *Segment) InsertToIndexName(indexName string) error {
 			return ErrInternalDBError
 		}
 
-		primary, inserts, err := s.generateInsertMap(indexName)
+		primary, inserts, err := s.generateIndexMap(indexName)
 		if err != nil {
 			return err
 		}
@@ -71,7 +282,7 @@ func (s *Segment) InsertToIndexName(indexName string) error {
 	})
 }
 
-func (s *Segment) generateInsertMap(indexName string) (primary string, inserts map[string]map[string]string, err error) {
+func (s *Segment) generateIndexMap(indexName string) (primary string, inserts map[string]map[string]string, err error) {
 	// Gather the values by field name and key in a 0 based map
 	inserts = make(map[string]map[string]string, 0)
 

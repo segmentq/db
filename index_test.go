@@ -11,7 +11,7 @@ import (
 )
 
 func TestDB_GetIndexByName(t *testing.T) {
-	d, _ := NewDB(context.Background())
+	d := testNewDB(t)
 
 	indexName := "hello"
 	indexDefinition := &api.IndexDefinition{
@@ -46,7 +46,7 @@ func TestDB_GetIndexByName(t *testing.T) {
 }
 
 func TestDB_ListIndexes(t *testing.T) {
-	d, _ := NewDB(context.Background())
+	d := testNewDB(t)
 
 	indexSubset := []*api.IndexDefinition{
 		{
@@ -75,7 +75,7 @@ func TestDB_ListIndexes(t *testing.T) {
 }
 
 func TestDB_TruncateIndex(t *testing.T) {
-	d, _ := NewDB(context.Background())
+	d := testNewDB(t)
 
 	// Create an index called "hello" with "name" and "age" fields
 	index, _ := d.CreateIndex(&api.IndexDefinition{
@@ -144,7 +144,7 @@ func TestDB_TruncateIndex(t *testing.T) {
 }
 
 func TestDB_DeleteIndex(t *testing.T) {
-	d, _ := NewDB(context.Background())
+	d := testNewDB(t)
 
 	// Create an index called "hello" with "name" and "age" fields
 	index, _ := d.CreateIndex(&api.IndexDefinition{
@@ -215,7 +215,7 @@ func TestDB_DeleteIndex(t *testing.T) {
 }
 
 func TestDB_CreateIndex(t *testing.T) {
-	db, _ := NewDB(context.Background())
+	db := testNewDB(t)
 	index1 := &api.IndexDefinition{
 		Name: "people",
 		Fields: []*api.FieldDefinition{
@@ -231,7 +231,7 @@ func TestDB_CreateIndex(t *testing.T) {
 		},
 	}
 
-	dbWithIndex, _ := NewDB(context.Background())
+	dbWithIndex := testNewDB(t)
 	_, _ = dbWithIndex.CreateIndex(index1)
 
 	type fields struct {
@@ -295,7 +295,7 @@ func TestDB_CreateIndex(t *testing.T) {
 }
 
 func TestDB_createIndexField(t *testing.T) {
-	db, _ := NewDB(context.Background())
+	db := testNewDB(t)
 
 	type fields struct {
 		ctx    context.Context
@@ -376,7 +376,7 @@ func TestDB_createIndexField(t *testing.T) {
 }
 
 func TestDB_createIndexFields(t *testing.T) {
-	db, _ := NewDB(context.Background())
+	db := testNewDB(t)
 
 	type fields struct {
 		ctx    context.Context
@@ -461,7 +461,7 @@ func TestDB_createIndexFields(t *testing.T) {
 }
 
 func TestDB_loadIndexFields(t *testing.T) {
-	db1, _ := NewDB(context.Background())
+	db1 := testNewDB(t)
 	index1 := &api.IndexDefinition{
 		Name: "banana",
 		Fields: []*api.FieldDefinition{

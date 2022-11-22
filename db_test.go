@@ -1,9 +1,18 @@
 package db
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
+
+func testNewDB(t *testing.T) *DB {
+	db, err := NewDB(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
 
 func TestKey_FieldNameAtIndex(t *testing.T) {
 	type fields struct {
