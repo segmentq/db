@@ -166,7 +166,7 @@ func (s *Segment) deleteFromIndexName(indexName string) error {
 	return txn.Settle()
 }
 
-// TODO change this to take the Segment as an arg instead of proto
+// ReplaceSegment TODO change this to take the Segment as an arg instead of proto
 func (db *DB) ReplaceSegment(indexName string, segmentKey string, newSegment *api.Segment) (*Segment, error) {
 	index, err := db.GetIndexByName(indexName)
 	if err != nil {

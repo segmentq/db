@@ -35,8 +35,8 @@ const (
 )
 
 type ClientConfig struct {
-	path       string
-	durability DurabilityProfile
+	Path       string
+	Durability DurabilityProfile
 }
 
 var (
@@ -65,12 +65,12 @@ func NewDB(ctx context.Context) (*DB, error) {
 
 // NewDBWithConfig creates a database using a ClientConfig you specify
 func NewDBWithConfig(ctx context.Context, config *ClientConfig) (*DB, error) {
-	engine, err := buntdb.Open(config.path)
+	engine, err := buntdb.Open(config.Path)
 	if err != nil {
 		return nil, ErrInternalDBError
 	}
 
-	err = engine.ReadConfig(configMap[config.durability])
+	err = engine.ReadConfig(configMap[config.Durability])
 	if err != nil {
 		return nil, ErrInternalDBError
 	}
@@ -194,6 +194,7 @@ type Txn struct {
 	stack []TxnAction
 }
 
+// NewTxn requires the DB struct and uses it to perform write safe or non write safe transactions
 func NewTxn(db *DB, safe bool) *Txn {
 	return &Txn{
 		db:    db,
