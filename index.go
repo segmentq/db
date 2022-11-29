@@ -172,6 +172,10 @@ func (i *Index) Create() error {
 	return i.db.createIndexFields(idStr, i.definition.Fields)
 }
 
+func (i *Index) Definition() *api.IndexDefinition {
+	return i.definition
+}
+
 // Delete first uses Truncate to clear segment then deletes the index
 func (i *Index) Delete() error {
 	if err := i.Truncate(); err != nil {
