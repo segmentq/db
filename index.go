@@ -411,3 +411,19 @@ func (db *DB) createIndexField(path string, field *api.FieldDefinition) (err err
 
 	return err
 }
+
+func (i *Index) UnmarshallPrimaryValue(value string) (*api.SegmentField, error) {
+	var primaryDefinition *api.FieldDefinition
+	for _, field := range i.definition.Fields {
+		if field.IsPrimary {
+			primaryDefinition = field
+		}
+	}
+
+	if primaryDefinition == nil {
+		return nil, ErrPrimaryKeyMissing
+	}
+
+	s := NewFieldDefinitionStringer(primaryDefinition)
+	return s.UnmarshallText(value)
+}

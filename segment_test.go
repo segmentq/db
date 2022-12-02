@@ -879,7 +879,7 @@ func TestStringer_Marshall(t *testing.T) {
 				lookupField:  tt.fields.lookupField,
 				iter:         tt.fields.iter,
 			}
-			tt.wantErr(t, s.Marshall(), fmt.Sprintf("Marshall()"))
+			tt.wantErr(t, s.MarshallText(), fmt.Sprintf("MarshallText()"))
 		})
 	}
 }

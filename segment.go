@@ -317,7 +317,7 @@ func (s *Segment) generateIndexMap(indexName string) (primary string, inserts ma
 			return true
 		})
 
-		if err = stringer.Marshall(); err != nil {
+		if err = stringer.MarshallText(); err != nil {
 			return "", nil, ErrInternalDBError
 		}
 
@@ -328,9 +328,10 @@ func (s *Segment) generateIndexMap(indexName string) (primary string, inserts ma
 }
 
 type Stringer struct {
-	segmentField *api.SegmentField
-	lookupField  *api.LookupField
-	iter         func(key, value string) bool
+	segmentField    *api.SegmentField
+	lookupField     *api.LookupField
+	fieldDefinition *api.FieldDefinition
+	iter            func(key, value string) bool
 }
 
 func NewSegmentStringer(field *api.SegmentField, iter func(key, value string) bool) *Stringer {
@@ -347,7 +348,13 @@ func NewLookupStringer(field *api.LookupField, iter func(key, value string) bool
 	}
 }
 
-func (s *Stringer) Marshall() error {
+func NewFieldDefinitionStringer(fieldDefinition *api.FieldDefinition) *Stringer {
+	return &Stringer{
+		fieldDefinition: fieldDefinition,
+	}
+}
+
+func (s *Stringer) MarshallText() error {
 	if s.segmentField != nil {
 		return s.marshallSegment()
 	}
@@ -357,6 +364,14 @@ func (s *Stringer) Marshall() error {
 	}
 
 	return errors.New("no field set")
+}
+
+func (s *Stringer) UnmarshallText(value string) (*api.SegmentField, error) {
+	if s.fieldDefinition != nil {
+		return s.unmarshallSegmentFieldText(value)
+	}
+
+	return nil, errors.New("no field definition was provided")
 }
 
 func (s *Stringer) marshallSegment() error {
@@ -489,8 +504,79 @@ func (s *Stringer) marshallLookup() error {
 	return nil
 }
 
+func (s *Stringer) unmarshallSegmentFieldText(value string) (segmentField *api.SegmentField, err error) {
+	switch s.fieldDefinition.DataType.(type) {
+	case *api.FieldDefinition_Scalar:
+		segmentField, err = s.unmarshallScalarFieldText(value)
+	case *api.FieldDefinition_Geo:
+		segmentField, err = s.unmarshallGeoFieldText(value)
+	default:
+		return nil, ErrFieldUnknown
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return segmentField, nil
+}
+
+func (s *Stringer) unmarshallScalarFieldText(value string) (segmentField *api.SegmentField, err error) {
+	switch s.fieldDefinition.GetScalar() {
+	// STRINGs + BLOBs
+	case api.ScalarType_DATA_TYPE_UNDEFINED, api.ScalarType_DATA_TYPE_STRING, api.ScalarType_DATA_TYPE_BLOB:
+		return s.toStringField(value)
+	// INTs
+	case api.ScalarType_DATA_TYPE_INT, api.ScalarType_DATA_TYPE_INT64, api.ScalarType_DATA_TYPE_INT8,
+		api.ScalarType_DATA_TYPE_INT16, api.ScalarType_DATA_TYPE_INT32:
+		return s.toIntField(value)
+	// UINTs
+	case api.ScalarType_DATA_TYPE_UINT, api.ScalarType_DATA_TYPE_UINT64, api.ScalarType_DATA_TYPE_UINT8,
+		api.ScalarType_DATA_TYPE_UINT16, api.ScalarType_DATA_TYPE_UINT32:
+		return s.toUintField(value)
+	// FLOATs
+	case api.ScalarType_DATA_TYPE_FLOAT, api.ScalarType_DATA_TYPE_FLOAT64, api.ScalarType_DATA_TYPE_FLOAT32:
+		return s.toFloatField(value)
+	// BOOL
+	case api.ScalarType_DATA_TYPE_BOOL:
+		return s.toBoolField(value)
+	}
+
+	return nil, ErrFieldUnknown
+}
+
+func (s *Stringer) unmarshallGeoFieldText(value string) (segmentField *api.SegmentField, err error) {
+	return nil, errors.New("not implemented")
+
+	//switch s.fieldDefinition.GetGeo() {
+	//// RANGEs
+	//case api.GeoType_DATA_TYPE_RANGE, api.GeoType_DATA_TYPE_RANGE_FLOAT:
+	//	return s.toRangeFloatField(value)
+	//case api.GeoType_DATA_TYPE_RANGE_INT:
+	//	return s.toRangeIntField(value)
+	//// GEOs
+	//case api.GeoType_DATA_TYPE_GEO, api.GeoType_DATA_TYPE_GEO_POINT:
+	//	return s.toGeoPointField(value)
+	//case api.GeoType_DATA_TYPE_GEO_RECT:
+	//	return s.toGeoRectField(value)
+	//}
+	//
+	//return nil, ErrFieldUnknown
+}
+
 func (s *Stringer) fromStringValue(key int, value string) bool {
 	return s.iter(strconv.Itoa(key), value)
+}
+
+func (s *Stringer) toStringField(value string) (*api.SegmentField, error) {
+	return &api.SegmentField{
+		Name: s.fieldDefinition.Name,
+		Value: &api.SegmentField_StringValue{
+			StringValue: &api.SegmentFieldString{
+				Value: value,
+			},
+		},
+	}, nil
 }
 
 func (s *Stringer) fromRepeatedStringValue(values []string) {
@@ -505,6 +591,22 @@ func (s *Stringer) fromIntValue(key int, value int64) bool {
 	return s.iter(strconv.Itoa(key), strconv.FormatInt(value, 10))
 }
 
+func (s *Stringer) toIntField(value string) (*api.SegmentField, error) {
+	converted, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	return &api.SegmentField{
+		Name: s.fieldDefinition.Name,
+		Value: &api.SegmentField_IntValue{
+			IntValue: &api.SegmentFieldInt{
+				Value: converted,
+			},
+		},
+	}, nil
+}
+
 func (s *Stringer) fromRepeatedIntValue(values []int64) {
 	for key, value := range values {
 		if ok := s.fromIntValue(key, value); !ok {
@@ -515,6 +617,22 @@ func (s *Stringer) fromRepeatedIntValue(values []int64) {
 
 func (s *Stringer) fromUintValue(key int, value uint64) bool {
 	return s.iter(strconv.Itoa(key), strconv.FormatUint(value, 10))
+}
+
+func (s *Stringer) toUintField(value string) (*api.SegmentField, error) {
+	converted, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	return &api.SegmentField{
+		Name: s.fieldDefinition.Name,
+		Value: &api.SegmentField_UintValue{
+			UintValue: &api.SegmentFieldUInt{
+				Value: converted,
+			},
+		},
+	}, nil
 }
 
 func (s *Stringer) fromRepeatedUintValue(values []uint64) {
@@ -529,6 +647,22 @@ func (s *Stringer) fromFloatValue(key int, value float64) bool {
 	return s.iter(strconv.Itoa(key), strconv.FormatFloat(value, 'E', -1, 64))
 }
 
+func (s *Stringer) toFloatField(value string) (*api.SegmentField, error) {
+	converted, err := strconv.ParseFloat(value, 10)
+	if err != nil {
+		return nil, err
+	}
+
+	return &api.SegmentField{
+		Name: s.fieldDefinition.Name,
+		Value: &api.SegmentField_FloatValue{
+			FloatValue: &api.SegmentFieldFloat{
+				Value: converted,
+			},
+		},
+	}, nil
+}
+
 func (s *Stringer) fromRepeatedFloatValue(values []float64) {
 	for key, value := range values {
 		if ok := s.fromFloatValue(key, value); !ok {
@@ -539,6 +673,22 @@ func (s *Stringer) fromRepeatedFloatValue(values []float64) {
 
 func (s *Stringer) fromBoolValue(key int, value bool) bool {
 	return s.iter(strconv.Itoa(key), strconv.FormatBool(value))
+}
+
+func (s *Stringer) toBoolField(value string) (*api.SegmentField, error) {
+	converted, err := strconv.ParseBool(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &api.SegmentField{
+		Name: s.fieldDefinition.Name,
+		Value: &api.SegmentField_BoolValue{
+			BoolValue: &api.SegmentFieldBool{
+				Value: converted,
+			},
+		},
+	}, nil
 }
 
 func (s *Stringer) fromRepeatedBoolValue(values []bool) {

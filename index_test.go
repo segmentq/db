@@ -532,3 +532,132 @@ func TestDB_loadIndexFields(t *testing.T) {
 		})
 	}
 }
+
+func TestIndex_UnmarshallPrimaryValue(t *testing.T) {
+	d := testNewDB(t)
+	stringDef := &api.IndexDefinition{
+		Name: "fruits",
+		Fields: []*api.FieldDefinition{
+			{
+				Name:      "name",
+				DataType:  &api.FieldDefinition_Scalar{Scalar: api.ScalarType_DATA_TYPE_STRING},
+				IsPrimary: true,
+			},
+		},
+	}
+	intDef := &api.IndexDefinition{
+		Name: "fruits",
+		Fields: []*api.FieldDefinition{
+			{
+				Name:      "length",
+				DataType:  &api.FieldDefinition_Scalar{Scalar: api.ScalarType_DATA_TYPE_INT},
+				IsPrimary: true,
+			},
+		},
+	}
+	floatDef := &api.IndexDefinition{
+		Name: "fruits",
+		Fields: []*api.FieldDefinition{
+			{
+				Name:      "weight",
+				DataType:  &api.FieldDefinition_Scalar{Scalar: api.ScalarType_DATA_TYPE_FLOAT},
+				IsPrimary: true,
+			},
+		},
+	}
+	boolDef := &api.IndexDefinition{
+		Name: "fruits",
+		Fields: []*api.FieldDefinition{
+			{
+				Name:      "isBruised",
+				DataType:  &api.FieldDefinition_Scalar{Scalar: api.ScalarType_DATA_TYPE_BOOL},
+				IsPrimary: true,
+			},
+		},
+	}
+
+	type fields struct {
+		db         *DB
+		definition *api.IndexDefinition
+	}
+	type args struct {
+		value string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *api.SegmentField
+		wantErr assert.ErrorAssertionFunc
+	}{
+		{
+			name:   "golden path string",
+			fields: fields{db: d, definition: stringDef},
+			args:   args{value: "banana"},
+			want: &api.SegmentField{
+				Name: "name",
+				Value: &api.SegmentField_StringValue{
+					StringValue: &api.SegmentFieldString{
+						Value: "banana",
+					},
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name:   "golden path int",
+			fields: fields{db: d, definition: intDef},
+			args:   args{value: "123"},
+			want: &api.SegmentField{
+				Name: "length",
+				Value: &api.SegmentField_IntValue{
+					IntValue: &api.SegmentFieldInt{
+						Value: 123,
+					},
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name:   "golden path float",
+			fields: fields{db: d, definition: floatDef},
+			args:   args{value: "1.2345"},
+			want: &api.SegmentField{
+				Name: "weight",
+				Value: &api.SegmentField_FloatValue{
+					FloatValue: &api.SegmentFieldFloat{
+						Value: 1.2345,
+					},
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name:   "golden path bool",
+			fields: fields{db: d, definition: boolDef},
+			args:   args{value: "true"},
+			want: &api.SegmentField{
+				Name: "isBruised",
+				Value: &api.SegmentField_BoolValue{
+					BoolValue: &api.SegmentFieldBool{
+						Value: true,
+					},
+				},
+			},
+			wantErr: assert.NoError,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			i := &Index{
+				db:         tt.fields.db,
+				definition: tt.fields.definition,
+			}
+			got, err := i.UnmarshallPrimaryValue(tt.args.value)
+			if !tt.wantErr(t, err, fmt.Sprintf("UnmarshallPrimaryValue(%v)", tt.args.value)) {
+				return
+			}
+			assert.Equalf(t, tt.want, got, "UnmarshallPrimaryValue(%v)", tt.args.value)
+		})
+	}
+}
