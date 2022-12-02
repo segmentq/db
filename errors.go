@@ -15,4 +15,5 @@ var (
 	ErrSegmentMissing    = errors.New("segment was not available for lookup")
 	ErrSegmentNotFound   = errors.New("segment does not exist")
 	ErrMarshallingFailed = errors.New("marshalling failed")
+	ErrPrimaryKeyMissing = errors.New("index is missing a primary key")
 )

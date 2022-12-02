@@ -212,7 +212,7 @@ func (t *Iterator) scanAllFields(indexId string, m *matcher, tx *buntdb.Tx) erro
 			return tx.AscendEqual(idxKey(indexId, field.Name), value, m.match) == nil
 		})
 
-		if err := s.Marshall(); err != nil {
+		if err := s.MarshallText(); err != nil {
 			return ErrLookupFailure
 		}
 
