@@ -232,6 +232,10 @@ func (s *Segment) Insert() error {
 	return s.insertToIndexName(s.index.definition.Name)
 }
 
+func (s *Segment) Proto() *api.Segment {
+	return s.segment
+}
+
 type insertSegmentTxn struct {
 	indexName string
 	key       string

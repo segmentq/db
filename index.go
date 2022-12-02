@@ -203,6 +203,10 @@ func (i *Index) Delete() error {
 	return nil
 }
 
+func (i *Index) Proto() *api.IndexDefinition {
+	return i.definition
+}
+
 func (i *Index) deleteKeys(idx string, tx *buntdb.Tx) error {
 	keys := []string{
 		idxKey(idxById, i.definition.Name),

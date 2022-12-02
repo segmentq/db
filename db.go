@@ -184,14 +184,14 @@ func keyFromString(key string) Key {
 	return k
 }
 
-type TxnAction interface {
+type Action interface {
 	call(tx *buntdb.Tx) error
 }
 
 type Txn struct {
 	db    *DB
 	safe  bool
-	stack []TxnAction
+	stack []Action
 }
 
 // NewTxn requires the DB struct and uses it to perform write safe or non write safe transactions
@@ -199,12 +199,16 @@ func NewTxn(db *DB, safe bool) *Txn {
 	return &Txn{
 		db:    db,
 		safe:  safe,
-		stack: make([]TxnAction, 0),
+		stack: make([]Action, 0),
 	}
 }
 
-func (t *Txn) AddAction(action TxnAction) {
+func (t *Txn) AddAction(action Action) {
 	t.stack = append(t.stack, action)
+}
+
+func (t *Txn) Reset() {
+	t.stack = make([]Action, 0)
 }
 
 func (t *Txn) Settle() error {
