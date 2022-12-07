@@ -1659,6 +1659,22 @@ func TestDB_GetAllSegments(t *testing.T) {
 			},
 			wantErr: assert.NoError,
 		},
+		{
+			name: "no index",
+			fields: fields{
+				ctx:    d.ctx,
+				engine: d.engine,
+				idx:    d.idx,
+				fields: d.fields,
+			},
+			args: args{
+				indexName: "banana",
+				iter: func(segment *api.Segment) bool {
+					return false
+				},
+			},
+			wantErr: assert.Error,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
