@@ -83,6 +83,37 @@ func (i *Index) GetSegmentByKey(key string) (*Segment, error) {
 	}, nil
 }
 
+func (db *DB) GetAllSegments(indexName string, iter func(segment *api.Segment) bool) error {
+	i, err := db.GetIndexByName(indexName)
+	if err != nil {
+		return err
+	}
+
+	return i.GetAllSegments(iter)
+}
+
+func (i *Index) GetAllSegments(iter func(segment *api.Segment) bool) error {
+	return i.db.engine.View(func(tx *buntdb.Tx) error {
+		idx, err := tx.Get(idxKey(idxById, i.definition.Name), true)
+		if err != nil {
+			return ErrInternalDBError
+		}
+
+		if err = tx.Ascend(idxKey(segmentByPrimaryKey, idx), func(key, value string) bool {
+			var s api.Segment
+			if err2 := proto.UnmarshalText(value, &s); err2 != nil {
+				return false
+			}
+
+			return iter(&s)
+		}); err != nil {
+			return ErrInternalDBError
+		}
+
+		return nil
+	})
+}
+
 func (db *DB) DeleteSegment(indexName string, segmentKey string) (*Segment, error) {
 	index, err := db.GetIndexByName(indexName)
 	if err != nil {
