@@ -1533,3 +1533,158 @@ func Test_newSegment(t *testing.T) {
 		})
 	}
 }
+
+func TestIndex_GetAllSegments(t *testing.T) {
+	d := testNewDB(t)
+	iDef := getSingleFieldIndex("fruits")
+	index, _ := d.CreateIndex(iDef)
+
+	banana := getSingleFieldSegment("banana")
+	mango := getSingleFieldSegment("mango")
+	apple := getSingleFieldSegment("apple")
+
+	_, _ = index.InsertSegment(banana)
+	_, _ = index.InsertSegment(mango)
+	_, _ = index.InsertSegment(apple)
+
+	type fields struct {
+		db         *DB
+		definition *api.IndexDefinition
+	}
+	type args struct {
+		iter func(segment *api.Segment) bool
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr assert.ErrorAssertionFunc
+	}{
+		{
+			name: "golden path",
+			fields: fields{
+				db:         d,
+				definition: iDef,
+			},
+			args: args{
+				iter: func(segment *api.Segment) bool {
+					return segment == banana || segment == mango || segment == apple
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "golden path false in function",
+			fields: fields{
+				db:         d,
+				definition: iDef,
+			},
+			args: args{
+				iter: func(segment *api.Segment) bool {
+					return false
+				},
+			},
+			wantErr: assert.NoError,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			i := &Index{
+				db:         tt.fields.db,
+				definition: tt.fields.definition,
+			}
+			tt.wantErr(t, i.GetAllSegments(tt.args.iter), fmt.Sprintf("GetAllSegments(%p)", tt.args.iter))
+		})
+	}
+}
+
+func TestDB_GetAllSegments(t *testing.T) {
+	d := testNewDB(t)
+	iDef := getSingleFieldIndex("fruits")
+	index, _ := d.CreateIndex(iDef)
+
+	banana := getSingleFieldSegment("banana")
+	mango := getSingleFieldSegment("mango")
+	apple := getSingleFieldSegment("apple")
+
+	_, _ = index.InsertSegment(banana)
+	_, _ = index.InsertSegment(mango)
+	_, _ = index.InsertSegment(apple)
+
+	type fields struct {
+		ctx    context.Context
+		engine *buntdb.DB
+		idx    map[string]*api.IndexDefinition
+		fields map[string]map[string]*api.FieldDefinition
+	}
+	type args struct {
+		indexName string
+		iter      func(segment *api.Segment) bool
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr assert.ErrorAssertionFunc
+	}{
+		{
+			name: "golden path",
+			fields: fields{
+				ctx:    d.ctx,
+				engine: d.engine,
+				idx:    d.idx,
+				fields: d.fields,
+			},
+			args: args{
+				indexName: iDef.Name,
+				iter: func(segment *api.Segment) bool {
+					return segment == banana || segment == mango || segment == apple
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "golden path false in function",
+			fields: fields{
+				ctx:    d.ctx,
+				engine: d.engine,
+				idx:    d.idx,
+				fields: d.fields,
+			},
+			args: args{
+				indexName: iDef.Name,
+				iter: func(segment *api.Segment) bool {
+					return false
+				},
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "no index",
+			fields: fields{
+				ctx:    d.ctx,
+				engine: d.engine,
+				idx:    d.idx,
+				fields: d.fields,
+			},
+			args: args{
+				indexName: "banana",
+				iter: func(segment *api.Segment) bool {
+					return false
+				},
+			},
+			wantErr: assert.Error,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := &DB{
+				ctx:    tt.fields.ctx,
+				engine: tt.fields.engine,
+				idx:    tt.fields.idx,
+				fields: tt.fields.fields,
+			}
+			tt.wantErr(t, db.GetAllSegments(tt.args.indexName, tt.args.iter), fmt.Sprintf("GetAllSegments(%v, %p)", tt.args.indexName, tt.args.iter))
+		})
+	}
+}
