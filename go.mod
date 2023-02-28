@@ -4,7 +4,8 @@ go 1.19
 
 require (
 	github.com/golang/protobuf v1.5.2
-	github.com/segmentq/protos-api-go v0.0.0-20221127133954-a44e5e92a6e9
+	github.com/segmentq/protos-api-go v0.5.2
+	github.com/stretchr/testify v1.8.1
 	github.com/tidwall/buntdb v1.2.10
 	google.golang.org/api v0.103.0
 )
@@ -12,8 +13,6 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/stretchr/objx v0.5.0 // indirect
-	github.com/stretchr/testify v1.8.1 // indirect
 	github.com/tidwall/btree v1.4.4 // indirect
 	github.com/tidwall/gjson v1.14.3 // indirect
 	github.com/tidwall/grect v0.1.4 // indirect
